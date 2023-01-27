@@ -1,8 +1,8 @@
 /*************************************
 * Lab 1 Exercise 2
 * Name: David Zhu, Tan Yuan Wei
-# Student No: A0253167A, A0235417H
-# Lab Group: B01, B14
+* Student No: A0253167A, A0235417H
+* Lab Group: B01, B14
 *************************************/
 
 #include "node.h"
