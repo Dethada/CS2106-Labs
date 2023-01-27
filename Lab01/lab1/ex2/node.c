@@ -60,7 +60,7 @@ int search_list(list *lst, int element) {
 
     node *curr = lst->head;
     int index = 0;
-    while (curr->next != NULL) {
+    while (curr != NULL) {
         if (curr->data == element) {
             return index;
         }
@@ -91,10 +91,10 @@ void reset_list(list *lst) {
     node *curr = lst->head;
     node *temp;
     lst->head = NULL;
-    while (curr->next != NULL) {
+    while (curr != NULL) {
         temp = curr->next;
         free(curr);
         curr = temp;
     }
-    free(curr);
+    free(lst->head);
 }
