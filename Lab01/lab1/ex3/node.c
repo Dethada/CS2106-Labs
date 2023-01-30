@@ -138,5 +138,4 @@ void map(list *lst, int (*func)(int)) {
         curr = curr->next;
     }
 }
-	
 
