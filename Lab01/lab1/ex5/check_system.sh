@@ -10,14 +10,15 @@
 # Fill the below up
 hostname=$(uname -n)
 
+# -s to get OS
+# -m to get hardware architecture
 machine_hardware=$(echo "$(uname -s) $(uname -m)")
 
 max_process_id=$(cat /proc/sys/kernel/pid_max)
 
 # x to include background processes
 # o user to reduce unnessary output
-# minus 1 for ps, 1 for wc, 1 for the script itself and 1 for extra newline
-user_process_count=$(($(ps -xo uid --no-headers|wc -l) - 4))
+user_process_count=$(ps -xo uid --no-heaers|wc -l)
 
 user_with_most_processes=$(ps -eo user --sort uid --no-headers|uniq -c|sort -nr|awk 'NR==1 {print $2}')
 
