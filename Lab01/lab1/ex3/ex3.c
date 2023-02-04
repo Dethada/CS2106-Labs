@@ -1,7 +1,7 @@
 /*************************************
 * Lab 1 Exercise 3
 * Name: David Zhu, Tan Yuan Wei
-* Student No: A0253167A, A0235417H
+* Student No: E0958755, E0727417
 * Lab Group: B01, B14
 *************************************/
 
