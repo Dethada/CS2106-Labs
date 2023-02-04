@@ -18,7 +18,7 @@ max_process_id=$(cat /proc/sys/kernel/pid_max)
 
 # x to include background processes
 # o user to reduce unnessary output
-user_process_count=$(ps -xo uid --no-heaers|wc -l)
+user_process_count=$(ps -xo uid --no-headers|wc -l)
 
 user_with_most_processes=$(ps -eo user --sort uid --no-headers|uniq -c|sort -nr|awk 'NR==1 {print $2}')
 
