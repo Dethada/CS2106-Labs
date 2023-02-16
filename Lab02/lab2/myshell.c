@@ -75,26 +75,28 @@ static void signal_handler(int signo) {
 
 }
 
-
+static void update_pcb(PCBTable *pcb, int status) {
+    if (WIFEXITED(status)) {
+        pcb->status = EXITED;
+        pcb->exitCode = WEXITSTATUS(status);
+    } else if (WIFSIGNALED(status)) {
+        pcb->status = EXITED;
+        pcb->exitCode = WTERMSIG(status);
+    } else if (WIFSTOPPED(status)) {
+        pcb->status = STOPPED;
+    }
+}
 
 static void proc_update_status() {
     for (int i = 0; i < MAX_PROCESS; i++) {
         if (g_PCBList[i] == NULL) {
             break;
         }
-        if (g_PCBList[i]->status == RUNNING || g_PCBList[i]->status == STOPPED) {
+        if (g_PCBList[i]->status != EXITED) {
             int status;
             pid_t ret = mywaitpid(g_PCBList[i]->pid, &status, WNOHANG);
             if (ret == g_PCBList[i]->pid) {
-                if (WIFEXITED(status)) {
-                    g_PCBList[i]->status = EXITED;
-                    g_PCBList[i]->exitCode = WEXITSTATUS(status);
-                } else if (WIFSIGNALED(status)) {
-                    g_PCBList[i]->status = EXITED;
-                    g_PCBList[i]->exitCode = WTERMSIG(status);
-                } else if (WIFSTOPPED(status)) {
-                    g_PCBList[i]->status = STOPPED;
-                }
+                update_pcb(g_PCBList[i], status);
             }
         }
     }
@@ -129,10 +131,10 @@ static void command_info(Command *cmd) {
             if (g_PCBList[i] == NULL) {
                 break;
             }
-            if (g_PCBList[i]->status == RUNNING) {
-                printf("[%d] %s\n", g_PCBList[i]->pid, statusCaps[g_PCBList[i]->status-1]);
-            } else {
+            if (g_PCBList[i]->status == EXITED) {
                 printf("[%d] %s %d\n", g_PCBList[i]->pid, statusCaps[g_PCBList[i]->status-1], g_PCBList[i]->exitCode);
+            } else {
+                printf("[%d] %s\n", g_PCBList[i]->pid, statusCaps[g_PCBList[i]->status-1]);
             }
         }
     } else if (option >= 1 && option <= 4) {
@@ -152,27 +154,63 @@ static void command_info(Command *cmd) {
 }
 
 static void command_wait(Command *cmd) {
+    if (cmd->argc != 1) {
+        fprintf(stderr, "Wrong command\n");
+        return;
+    }
 
-        /******* FILL IN THE CODE *******/
+    char *endptr;
+    pid_t pid = strtoul(cmd->argv[0], &endptr, 10);
 
+    if (endptr == cmd->argv[0] || *endptr != '\0' || errno == ERANGE) {
+        fprintf(stderr, "Wrong command\n");
+        return;
+    }
 
-    // Find the {PID} in the PCBTable
-    // If the process indicated by the process id is RUNNING, wait for it (can use waitpid()).
-    // After the process terminate, update status and exit code (call proc_update_status())
-    // Else, continue accepting user commands.
-
+    // seach PCB List for the pid
+    for (int i = 0; i < MAX_PROCESS; i++) {
+        if (g_PCBList[i] == NULL) {
+            break;
+        } else if (g_PCBList[i]->pid == pid) {
+            if (g_PCBList[i]->status == RUNNING) {
+                int status;
+                pid_t ret = mywaitpid(pid, &status, WUNTRACED);
+                // proc_update_status();
+                if (ret == pid) {
+                    update_pcb(g_PCBList[i], status);
+                }
+            }
+            break;
+        }
+    }
 }
 
 
 static void command_terminate(Command *cmd) {
+    if (cmd->argc != 1) {
+        fprintf(stderr, "Wrong command\n");
+        return;
+    }
 
-        /******* FILL IN THE CODE *******/
+    char *endptr;
+    pid_t pid = strtoul(cmd->argv[0], &endptr, 10);
 
-    // Find the pid in the PCBTable
-    // If {PID} is RUNNING:
-        //Terminate it by using kill() to send SIGTERM
-        // The state of {PID} should be “Terminating” until {PID} exits
+    if (endptr == cmd->argv[0] || *endptr != '\0' || errno == ERANGE) {
+        fprintf(stderr, "Wrong command\n");
+        return;
+    }
 
+    for (int i = 0; i < MAX_PROCESS; i++) {
+        if (g_PCBList[i] == NULL) {
+            break;
+        } else if (g_PCBList[i]->pid == pid) {
+            if (g_PCBList[i]->status == RUNNING) {
+                kill(pid, SIGTERM);
+                g_PCBList[i]->status = TERMINATING;
+            }
+            break;
+        }
+    }
 }
 
 static void command_fg(Command *cmd) {
@@ -266,16 +304,10 @@ static void command_exec(Command *cmd) {
         } else {
             // else wait for the child process to exit
             // Use waitpid() with WNOHANG when not blocking during wait and  waitpid() with WUNTRACED when parent needs to block due to wait
-            waitpid(pid, &pcb->exitCode, WUNTRACED);
-            if (WIFEXITED(pcb->exitCode)) {
-                pcb->status = EXITED;
-                pcb->exitCode = WEXITSTATUS(pcb->exitCode);
-            } else if (WIFSIGNALED(pcb->exitCode)) {
-                pcb->status = TERMINATING;
-                pcb->exitCode = WTERMSIG(pcb->exitCode);
-            } else if (WIFSTOPPED(pcb->exitCode)) {
-                pcb->status = STOPPED;
-                pcb->exitCode = WSTOPSIG(pcb->exitCode);
+            pid_t ret = mywaitpid(pid, &pcb->exitCode, WUNTRACED);
+            // proc_update_status();
+            if (ret == pid) {
+                update_pcb(pcb, pcb->exitCode);
             }
         }
     }
