@@ -40,43 +40,22 @@ typedef struct Command {
 
 typedef struct PCBTable PCBTable;
 
-// typedef struct PCBList {
-//     int pointer;
-//     PCBTable *table;
-// }
-
 PCBTable *g_PCBList[MAX_PROCESS] = { NULL };
+uint g_PCBListIndex = 0;
 
 static pid_t mywaitpid(pid_t pid, int *status, int options) {
     pid_t ret = waitpid(pid, status, options);
     if (ret < 0) {
         fprintf(stderr, "waitpid failed\n");
     }
-    // if (ret >= 0) {
-    //     for (int i = 0; i < MAX_PROCESS; i++) {
-    //         if (g_PCBList[i] == NULL) {
-    //             break;
-    //         } else if (g_PCBList[i]->pid == ret) {
-    //             g_PCBList[i]->status = EXITED;
-    //             g_PCBList[i]->exitCode = WEXITSTATUS(*status);
-    //             break;
-    //         }
-    //     }
-    // } else if (ret < 0) {
-    //     fprintf(stderr, "waitpid failed\n");
-    // }
     return ret;
 }
 
-/*******************************************************************************
- * Signal handler : ex4
- ******************************************************************************/
-
-static void signal_handler(int signo) {
-
-        // Use the signo to identy ctrl-Z or ctrl-C and print “[PID] stopped or print “[PID] interrupted accordingly.
-        // Update the status of the process in the PCB table
-
+static void redirection(int oldfd, int newfd) {
+    if (dup2(oldfd, newfd) == -1) {
+        perror("Error redirecting output to file");
+        exit(EXIT_FAILURE);
+    }
 }
 
 static void update_pcb(PCBTable *pcb, int status) {
@@ -91,11 +70,19 @@ static void update_pcb(PCBTable *pcb, int status) {
     }
 }
 
+/*******************************************************************************
+ * Signal handler : ex4
+ ******************************************************************************/
+
+static void signal_handler(int signo) {
+
+        // Use the signo to identy ctrl-Z or ctrl-C and print “[PID] stopped or print “[PID] interrupted accordingly.
+        // Update the status of the process in the PCB table
+
+}
+
 static void proc_update_status() {
-    for (int i = 0; i < MAX_PROCESS; i++) {
-        if (g_PCBList[i] == NULL) {
-            break;
-        }
+    for (uint i = 0; i < g_PCBListIndex; i++) {
         if (g_PCBList[i]->status != EXITED) {
             int status;
             pid_t ret = mywaitpid(g_PCBList[i]->pid, &status, WNOHANG);
@@ -131,10 +118,7 @@ static void command_info(Command *cmd) {
     if (option == 0) {
         // print details of all processes
         proc_update_status();
-        for (int i = 0; i < MAX_PROCESS; i++) {
-            if (g_PCBList[i] == NULL) {
-                break;
-            }
+        for (uint i = 0; i < g_PCBListIndex; i++) {
             if (g_PCBList[i]->status == EXITED) {
                 printf("[%d] %s %d\n", g_PCBList[i]->pid, statusCaps[g_PCBList[i]->status-1], g_PCBList[i]->exitCode);
             } else {
@@ -144,10 +128,8 @@ static void command_info(Command *cmd) {
     } else if (option >= 1 && option <= 4) {
         proc_update_status();
         uint count = 0;
-        for (int i = 0; i < MAX_PROCESS; i++) {
-            if (g_PCBList[i] == NULL) {
-                break;
-            } else if (g_PCBList[i]->status == option) {
+        for (uint i = 0; i < g_PCBListIndex; i++) {
+            if (g_PCBList[i]->status == (int) option) {
                 count++;
             }
         }
@@ -172,10 +154,8 @@ static void command_wait(Command *cmd) {
     }
 
     // seach PCB List for the pid
-    for (int i = 0; i < MAX_PROCESS; i++) {
-        if (g_PCBList[i] == NULL) {
-            break;
-        } else if (g_PCBList[i]->pid == pid) {
+    for (uint i = 0; i < g_PCBListIndex; i++) {
+        if (g_PCBList[i]->pid == pid) {
             if (g_PCBList[i]->status == RUNNING) {
                 int status;
                 pid_t ret = mywaitpid(pid, &status, WUNTRACED);
@@ -204,10 +184,8 @@ static void command_terminate(Command *cmd) {
         return;
     }
 
-    for (int i = 0; i < MAX_PROCESS; i++) {
-        if (g_PCBList[i] == NULL) {
-            break;
-        } else if (g_PCBList[i]->pid == pid) {
+    for (uint i = 0; i < g_PCBListIndex; i++) {
+        if (g_PCBList[i]->pid == pid) {
             if (g_PCBList[i]->status == RUNNING) {
                 kill(pid, SIGTERM);
                 g_PCBList[i]->status = TERMINATING;
@@ -234,10 +212,6 @@ static void command_fg(Command *cmd) {
  ******************************************************************************/
 
 static void command_exec(Command *cmd) {
-
-        /******* FILL IN THE CODE *******/
-
-
     // check if program exists and is executable : use access()
     if (access(cmd->command, R_OK | X_OK) != 0) {
         // file is not readable or not executable
@@ -245,57 +219,43 @@ static void command_exec(Command *cmd) {
         return;
     }
 
-
     // fork a subprocess and execute the program
     pid_t pid = fork();
     if (pid < 0) {
-        // fork failed
-        fprintf(stderr, "fork failed\n");
+        perror("fork failed\n");
         return;
-    }
-    if (pid == 0) {
+    } else if (pid == 0) {
         // CHILD PROCESS
 
-
-        // check file redirection operation is present : ex3
-
-        // if < or > or 2> present:
-            // use fopen/open file to open the file for reading/writing with  permission O_RDONLY, O_WRONLY, O_CREAT, O_TRUNC, O_SYNC and 0644
-            // use dup2 to redirect the stdin, stdout and stderr to the files
-            // call execv() to execute the command in the child process
+        // redirect stdin, stdout, stderr if necessary
         if (cmd->stdinFile != NULL) {
             // check if the file exists
-            if (access(cmd->stdinFile, R_OK) != 0) {
-                fprintf(stderr, "%s does not exist\n", cmd->stdinFile);
-                exit(1);
-            }
             int fd = open(cmd->stdinFile, O_RDONLY);
-            dup2(fd, STDIN_FILENO);
+            if (fd == -1) {
+                fprintf(stderr, "%s does not exist\n", cmd->stdinFile);
+                exit(EXIT_FAILURE);
+            }
+            redirection(fd, STDIN_FILENO);
             close(fd);
         }
         if (cmd->stdoutFile != NULL) {
             int fd = open(cmd->stdoutFile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-            dup2(fd, STDOUT_FILENO);
+            redirection(fd, STDERR_FILENO);
             close(fd);
         }
         if (cmd->stderrFile != NULL) {
             int fd = open(cmd->stderrFile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-            dup2(fd, STDERR_FILENO);
+            redirection(fd, STDERR_FILENO);
             close(fd);
         }
 
-        // else : ex1, ex2
-            // call execv() to execute the command in the child process
-            // decrement argv by 1 to include the command name which is required by execv()
+        // decrement argv by 1 to include the command name which is required by execv()
         execv(cmd->command, cmd->argv-1);
 
-        // Exit the child
         // The exec() functions only return if an error has occurred. The return value is -1, and errno is set to indicate the error.
         fprintf(stderr, "%s failed to executed.\n", cmd->command);
         exit(EXIT_FAILURE);
     } else {
-
-
         // PARENT PROCESS
         // register the process in process table
         PCBTable *pcb = malloc(sizeof(PCBTable));
@@ -304,27 +264,20 @@ static void command_exec(Command *cmd) {
         pcb->exitCode = -1;
 
         // insert into PCB List
-        for (int i = 0; i < MAX_PROCESS; i++) {
-            if (g_PCBList[i] == NULL) {
-                g_PCBList[i] = pcb;
-                break;
-            }
-        }
+        g_PCBList[g_PCBListIndex++] = pcb;
 
+        int status;
         if (cmd->background) {
             // If  child process need to execute in the background  (if & is present at the end )
             printf("Child [%d] in background\n", pid);
-            if (mywaitpid(pid, &pcb->exitCode, WNOHANG) == pid) {
-                pcb->status = EXITED;
-                pcb->exitCode = WEXITSTATUS(pcb->exitCode);
+            if (mywaitpid(pid, &status, WNOHANG) == pid) {
+                update_pcb(pcb, status);
             }
         } else {
             // else wait for the child process to exit
             // Use waitpid() with WNOHANG when not blocking during wait and  waitpid() with WUNTRACED when parent needs to block due to wait
-            pid_t ret = mywaitpid(pid, &pcb->exitCode, WUNTRACED);
-            // proc_update_status();
-            if (ret == pid) {
-                update_pcb(pcb, pcb->exitCode);
+            if (mywaitpid(pid, &status, WUNTRACED) == pid) {
+                update_pcb(pcb, status);
             }
         }
     }
@@ -374,25 +327,14 @@ void my_init(void) {
 }
 
 void my_process_command(size_t num_tokens, char **tokens) {
-
-
-    /******* FILL IN THE CODE *******/
-
-    // Split tokens at NULL or ; to get a single command (ex1, ex2, ex3, ex4(fg command))
-
-    // for example :  /bin/ls ; /bin/sleep 5 ; /bin/pwd
-    // split the above line as first command : /bin/ls , second command: /bin/pwd  and third command:  /bin/pwd
-    // Call command() and pass each individual command as arguements
-
-    // printf("%zu tokens\n", num_tokens);
     uint command_count = 1;
-    for (int i = 0; i < num_tokens - 1; i++) {
+    for (uint i = 0; i < num_tokens - 1; i++) {
         if (strcmp(tokens[i], ";") == 0) {
             tokens[i] = NULL;
             command_count++;
         }
     }
-    for (int i = 0; i < command_count; i++) {
+    for (uint i = 0; i < command_count; i++) {
         int argc = -1;
         char **start = tokens;
         while (*tokens != NULL) {
@@ -400,19 +342,11 @@ void my_process_command(size_t num_tokens, char **tokens) {
             argc++;
         }
 
-        // // int n = 4;
-        // char **copy = (char **)malloc((argc + 1) * sizeof(char *));
-        //
-        // for (int i = 0; i < argc; i++) {
-        //     copy[i] = strdup(start[i]);
-        // }
-        //
-        // copy[argc] = NULL;
-
         Command *cmd = malloc(sizeof(Command));
         cmd->command = start[0];
         cmd->argc = argc;
         cmd->argv = start+1;
+
         // check for & at the end and strip
         cmd->background = strcmp(cmd->argv[cmd->argc-1], "&") == 0;
         if (cmd->background) {
@@ -427,18 +361,12 @@ void my_process_command(size_t num_tokens, char **tokens) {
         int decrement = 0;
         for (int i = 0; i < cmd->argc; i++) {
             if (strcmp(cmd->argv[i], ">") == 0) {
-                // cmd->argv[i] = NULL;
-                // cmd->argv[i+1] = NULL;
                 decrement += 2;
                 cmd->stdoutFile = cmd->argv[i+1];
             } else if (strcmp(cmd->argv[i], "<") == 0) {
-                // cmd->argv[i] = NULL;
-                // cmd->argv[i+1] = NULL;
                 decrement += 2;
                 cmd->stdinFile = cmd->argv[i+1];
             } else if (strcmp(cmd->argv[i], "2>") == 0) {
-                // cmd->argv[i] = NULL;
-                // cmd->argv[i+1] = NULL;
                 decrement += 2;
                 cmd->stderrFile = cmd->argv[i+1];
             }
@@ -450,10 +378,6 @@ void my_process_command(size_t num_tokens, char **tokens) {
 
         // Free the memory
         free(cmd);
-        // for (int i = 0; i < argc; i++) {
-        //     free(copy[i]);
-        // }
-        // free(copy);
 
         // skip the NULL element
         tokens++;
@@ -462,10 +386,7 @@ void my_process_command(size_t num_tokens, char **tokens) {
 
 void my_quit(void) {
     // Kill every process in the PCB that is either stopped or running
-    for (int i = 0; i < MAX_PROCESS; i++) {
-        if (g_PCBList[i] == NULL) {
-            break;
-        }
+    for (uint i = 0; i < g_PCBListIndex; i++) {
         if (g_PCBList[i]->status == RUNNING || g_PCBList[i]->status == STOPPED) {
             printf("Killing [%d]\n", g_PCBList[i]->pid);
             kill(g_PCBList[i]->pid, SIGKILL);
