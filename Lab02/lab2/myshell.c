@@ -32,6 +32,10 @@ typedef struct Command {
     char *command;
     int argc;
     char **argv;
+    bool background;
+    char *stdinFile;
+    char *stdoutFile;
+    char *stderrFile;
 } Command;
 
 typedef struct PCBTable PCBTable;
@@ -241,13 +245,6 @@ static void command_exec(Command *cmd) {
         return;
     }
 
-    // strip & from the end of the command if present
-    bool background = false;
-    if (strcmp(cmd->argv[cmd->argc-1], "&") == 0) {
-        background = true;
-        cmd->argv[cmd->argc-1] = NULL;
-        cmd->argc--;
-    }
 
     // fork a subprocess and execute the program
     pid_t pid = fork();
@@ -266,6 +263,26 @@ static void command_exec(Command *cmd) {
             // use fopen/open file to open the file for reading/writing with  permission O_RDONLY, O_WRONLY, O_CREAT, O_TRUNC, O_SYNC and 0644
             // use dup2 to redirect the stdin, stdout and stderr to the files
             // call execv() to execute the command in the child process
+        if (cmd->stdinFile != NULL) {
+            // check if the file exists
+            if (access(cmd->stdinFile, R_OK) != 0) {
+                fprintf(stderr, "%s does not exist\n", cmd->stdinFile);
+                exit(1);
+            }
+            int fd = open(cmd->stdinFile, O_RDONLY);
+            dup2(fd, STDIN_FILENO);
+            close(fd);
+        }
+        if (cmd->stdoutFile != NULL) {
+            int fd = open(cmd->stdoutFile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            dup2(fd, STDOUT_FILENO);
+            close(fd);
+        }
+        if (cmd->stderrFile != NULL) {
+            int fd = open(cmd->stderrFile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            dup2(fd, STDERR_FILENO);
+            close(fd);
+        }
 
         // else : ex1, ex2
             // call execv() to execute the command in the child process
@@ -294,7 +311,7 @@ static void command_exec(Command *cmd) {
             }
         }
 
-        if (background) {
+        if (cmd->background) {
             // If  child process need to execute in the background  (if & is present at the end )
             printf("Child [%d] in background\n", pid);
             if (mywaitpid(pid, &pcb->exitCode, WNOHANG) == pid) {
@@ -320,10 +337,12 @@ static void command_exec(Command *cmd) {
  ******************************************************************************/
 
 static void command(Command *cmd) {
-    // printf("Cmd: %s\nArgs: ", cmd->command);
-    // for (int i = 0; i < cmd->argc+1; i++) {
+    // printf("Cmd: %s\nArgc: %d\nArgs: ", cmd->command, cmd->argc);
+    // for (int i = 0; i < cmd->argc; i++) {
     //     printf("%s ", cmd->argv[i]);
     // }
+    // // print cmd files
+    // printf("\nStdin: %s, Stdout: %s, Stderr: %s", cmd->stdinFile, cmd->stdoutFile, cmd->stderrFile);
     // printf("\n================\n");
 
     if (strcmp(cmd->command, "info") == 0) {
@@ -381,12 +400,60 @@ void my_process_command(size_t num_tokens, char **tokens) {
             argc++;
         }
 
+        // // int n = 4;
+        // char **copy = (char **)malloc((argc + 1) * sizeof(char *));
+        //
+        // for (int i = 0; i < argc; i++) {
+        //     copy[i] = strdup(start[i]);
+        // }
+        //
+        // copy[argc] = NULL;
+
         Command *cmd = malloc(sizeof(Command));
         cmd->command = start[0];
         cmd->argc = argc;
         cmd->argv = start+1;
+        // check for & at the end and strip
+        cmd->background = strcmp(cmd->argv[cmd->argc-1], "&") == 0;
+        if (cmd->background) {
+            cmd->argv[cmd->argc-1] = NULL;
+            cmd->argc--;
+        }
+
+        cmd->stdinFile = NULL;
+        cmd->stdoutFile = NULL;
+        cmd->stderrFile = NULL;
+
+        int decrement = 0;
+        for (int i = 0; i < cmd->argc; i++) {
+            if (strcmp(cmd->argv[i], ">") == 0) {
+                // cmd->argv[i] = NULL;
+                // cmd->argv[i+1] = NULL;
+                decrement += 2;
+                cmd->stdoutFile = cmd->argv[i+1];
+            } else if (strcmp(cmd->argv[i], "<") == 0) {
+                // cmd->argv[i] = NULL;
+                // cmd->argv[i+1] = NULL;
+                decrement += 2;
+                cmd->stdinFile = cmd->argv[i+1];
+            } else if (strcmp(cmd->argv[i], "2>") == 0) {
+                // cmd->argv[i] = NULL;
+                // cmd->argv[i+1] = NULL;
+                decrement += 2;
+                cmd->stderrFile = cmd->argv[i+1];
+            }
+        }
+        cmd->argc -= decrement;
+        cmd->argv[cmd->argc] = NULL;
+
         command(cmd);
+
+        // Free the memory
         free(cmd);
+        // for (int i = 0; i < argc; i++) {
+        //     free(copy[i]);
+        // }
+        // free(copy);
 
         // skip the NULL element
         tokens++;
