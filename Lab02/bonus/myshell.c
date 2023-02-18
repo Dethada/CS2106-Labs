@@ -282,7 +282,7 @@ static void command_exec(Command *cmd) {
         }
         if (cmd->stdoutFile != NULL) {
             int fd = open(cmd->stdoutFile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-            redirection(fd, STDERR_FILENO);
+            redirection(fd, STDOUT_FILENO);
             close(fd);
         }
         if (cmd->stderrFile != NULL) {
