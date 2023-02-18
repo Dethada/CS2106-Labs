@@ -20,6 +20,10 @@
 #include <unistd.h>
 #include <errno.h>
 
+#define ERROR_RETURN(err_msg) \
+        fprintf(stderr, "%s\n", err_msg); \
+        return; \
+
 #define MAX_PROCESS 50
 
 // PCB Status Codes
@@ -42,6 +46,11 @@ typedef struct PCBTable PCBTable;
 
 PCBTable *g_PCBList[MAX_PROCESS] = { NULL };
 uint g_PCBListIndex = 0;
+pid_t g_fgProcess = -1;
+
+/*******************************************************************************
+ * My Helper Functions
+ ******************************************************************************/
 
 static pid_t mywaitpid(pid_t pid, int *status, int options) {
     pid_t ret = waitpid(pid, status, options);
@@ -70,15 +79,45 @@ static void update_pcb(PCBTable *pcb, int status) {
     }
 }
 
+static PCBTable *find_pcb(pid_t pid) {
+    for (uint i = 0; i < g_PCBListIndex; i++) {
+        if (g_PCBList[i]->pid == pid) {
+            return g_PCBList[i];
+        }
+    }
+    return NULL;
+}
+
+// If err == 1, then the conversion failed
+static unsigned long mystrtoul(const char *nptr, bool *err) {
+    char *endptr;
+    unsigned long res = strtoul(nptr, &endptr, 10);
+
+    if (endptr == nptr || *endptr != '\0' || errno == ERANGE) {
+        *err = 1;
+        return -1;
+    }
+    return res;
+}
+
+static void waitpid_update_pcb(PCBTable *pcb, int options) {
+    int status;
+    pid_t ret = mywaitpid(pcb->pid, &status, options);
+    if (ret == pcb->pid) {
+        update_pcb(pcb, status);
+    }
+}
+
 /*******************************************************************************
  * Signal handler : ex4
  ******************************************************************************/
 
 static void proc_update_status() {
+    int status;
+    pid_t ret;
     for (uint i = 0; i < g_PCBListIndex; i++) {
         if (g_PCBList[i]->status != EXITED) {
-            int status;
-            pid_t ret = mywaitpid(g_PCBList[i]->pid, &status, WNOHANG);
+            ret = mywaitpid(g_PCBList[i]->pid, &status, WNOHANG);
             if (ret == g_PCBList[i]->pid) {
                 update_pcb(g_PCBList[i], status);
             }
@@ -90,22 +129,26 @@ static void signal_handler(int signo) {
     // Use the signo to identy ctrl-Z or ctrl-C and print “[PID] stopped or print “[PID] interrupted accordingly.
     // Update the status of the process in the PCB table
     proc_update_status();
+    if (g_fgProcess == -1) {
+        return;
+    }
 
     if (signo == SIGINT) {
-        for (uint i = 0; i < g_PCBListIndex; i++) {
-            if (g_PCBList[i]->status == RUNNING) {
-                printf("[%d] interrupted\n", g_PCBList[i]->pid);
-                kill(g_PCBList[i]->pid, SIGINT);
-            }
+        PCBTable *pcb = find_pcb(g_fgProcess);
+        if (pcb->status == RUNNING) {
+            printf("[%d] interrupted\n", pcb->pid);
+            kill(pcb->pid, SIGINT);
+            g_fgProcess = -1;
         }
     } else if (signo == SIGTSTP) {
-        for (uint i = 0; i < g_PCBListIndex; i++) {
-            if (g_PCBList[i]->status == RUNNING) {
-                printf("[%d] stopped\n", g_PCBList[i]->pid);
-                kill(g_PCBList[i]->pid, SIGTSTP);
-            }
+        PCBTable *pcb = find_pcb(g_fgProcess);
+        if (pcb->status == RUNNING) {
+            printf("[%d] stopped\n", pcb->pid);
+            kill(pcb->pid, SIGTSTP);
+            g_fgProcess = -1;
         }
     }
+    proc_update_status();
 }
 
 
@@ -115,24 +158,21 @@ static void signal_handler(int signo) {
 
 static void command_info(Command *cmd) {
     if (cmd->argc != 1) {
-        fprintf(stderr, "Wrong command\n");
-        return;
+        ERROR_RETURN("Wrong command");
     }
 
-    // parse option
-    char *endptr;
-    unsigned long option = strtoul(cmd->argv[0], &endptr, 10);
-
-    if (endptr == cmd->argv[0] || *endptr != '\0' || errno == ERANGE) {
-        fprintf(stderr, "Wrong command\n");
-        return;
+    bool err = 0;
+    unsigned long option = mystrtoul(cmd->argv[0], &err);
+    if (err) {
+        ERROR_RETURN("Wrong command");
     }
+
     char *statusCaps[] = { "Exited", "Running", "Terminating", "Stopped" };
     char *statusLower[] = { "exited", "running", "terminating", "stopped" };
 
+    proc_update_status();
     if (option == 0) {
         // print details of all processes
-        proc_update_status();
         for (uint i = 0; i < g_PCBListIndex; i++) {
             if (g_PCBList[i]->status == EXITED) {
                 printf("[%d] %s %d\n", g_PCBList[i]->pid, statusCaps[g_PCBList[i]->status-1], g_PCBList[i]->exitCode);
@@ -141,7 +181,6 @@ static void command_info(Command *cmd) {
             }
         }
     } else if (option >= 1 && option <= 4) {
-        proc_update_status();
         uint count = 0;
         for (uint i = 0; i < g_PCBListIndex; i++) {
             if (g_PCBList[i]->status == (int) option) {
@@ -150,92 +189,63 @@ static void command_info(Command *cmd) {
         }
         printf("Total %s process: %d\n", statusLower[option-1], count);
     } else {
-        fprintf(stderr, "Wrong command\n");
+        ERROR_RETURN("Wrong command");
     }
 }
 
 static void command_wait(Command *cmd) {
     if (cmd->argc != 1) {
-        fprintf(stderr, "Wrong command\n");
-        return;
+        ERROR_RETURN("Wrong command");
     }
 
-    char *endptr;
-    pid_t pid = strtoul(cmd->argv[0], &endptr, 10);
-
-    if (endptr == cmd->argv[0] || *endptr != '\0' || errno == ERANGE) {
-        fprintf(stderr, "Wrong command\n");
-        return;
+    bool err = 0;
+    pid_t pid = mystrtoul(cmd->argv[0], &err);
+    if (err) {
+        ERROR_RETURN("Wrong command");
     }
 
-    // seach PCB List for the pid
-    for (uint i = 0; i < g_PCBListIndex; i++) {
-        if (g_PCBList[i]->pid == pid) {
-            if (g_PCBList[i]->status == RUNNING) {
-                int status;
-                pid_t ret = mywaitpid(pid, &status, WUNTRACED);
-                // proc_update_status();
-                if (ret == pid) {
-                    update_pcb(g_PCBList[i], status);
-                }
-            }
-            break;
-        }
+    PCBTable *pcb = find_pcb(pid);
+    if (pcb != NULL && pcb->status == RUNNING) {
+        waitpid_update_pcb(pcb,  WUNTRACED);
     }
 }
 
 
 static void command_terminate(Command *cmd) {
     if (cmd->argc != 1) {
-        fprintf(stderr, "Wrong command\n");
-        return;
+        ERROR_RETURN("Wrong command");
     }
 
-    char *endptr;
-    pid_t pid = strtoul(cmd->argv[0], &endptr, 10);
-
-    if (endptr == cmd->argv[0] || *endptr != '\0' || errno == ERANGE) {
-        fprintf(stderr, "Wrong command\n");
-        return;
+    bool err = 0;
+    pid_t pid = mystrtoul(cmd->argv[0], &err);
+    if (err) {
+        ERROR_RETURN("Wrong command");
     }
 
-    for (uint i = 0; i < g_PCBListIndex; i++) {
-        if (g_PCBList[i]->pid == pid) {
-            if (g_PCBList[i]->status == RUNNING) {
-                kill(pid, SIGTERM);
-                g_PCBList[i]->status = TERMINATING;
-            }
-            break;
-        }
+    PCBTable *pcb = find_pcb(pid);
+    if (pcb != NULL && pcb->status == RUNNING) {
+        kill(pid, SIGTERM);
+        pcb->status = TERMINATING;
     }
 }
 
+
 static void command_fg(Command *cmd) {
     if (cmd->argc != 1) {
-        fprintf(stderr, "Wrong command\n");
-        return;
+        ERROR_RETURN("Wrong command");
     }
 
-    char *endptr;
-    pid_t pid = strtoul(cmd->argv[0], &endptr, 10);
-    if (endptr == cmd->argv[0] || *endptr != '\0' || errno == ERANGE) {
-        fprintf(stderr, "Wrong command\n");
-        return;
+    bool err = 0;
+    pid_t pid = mystrtoul(cmd->argv[0], &err);
+    if (err) {
+        ERROR_RETURN("Wrong command");
     }
 
-    for (uint i = 0; i < g_PCBListIndex; i++) {
-        if (g_PCBList[i]->pid == pid) {
-            if (g_PCBList[i]->status == STOPPED) {
-                printf("[%d] resumed\n", g_PCBList[i]->pid);
-                kill(pid, SIGCONT);
-                int status;
-                pid_t ret = mywaitpid(pid, &status, WUNTRACED);
-                if (ret == pid) {
-                    update_pcb(g_PCBList[i], status);
-                }
-            }
-            break;
-        }
+    PCBTable *pcb = find_pcb(pid);
+    if (pcb != NULL && pcb->status == STOPPED) {
+        printf("[%d] resumed\n", pid);
+        kill(pid, SIGCONT);
+        waitpid_update_pcb(pcb,  WUNTRACED);
     }
 }
 
@@ -255,8 +265,7 @@ static void command_exec(Command *cmd) {
     // fork a subprocess and execute the program
     pid_t pid = fork();
     if (pid < 0) {
-        perror("fork failed\n");
-        return;
+        ERROR_RETURN("fork failed");
     } else if (pid == 0) {
         // CHILD PROCESS
 
@@ -299,19 +308,15 @@ static void command_exec(Command *cmd) {
         // insert into PCB List
         g_PCBList[g_PCBListIndex++] = pcb;
 
-        int status;
         if (cmd->background) {
             // If  child process need to execute in the background  (if & is present at the end )
             printf("Child [%d] in background\n", pid);
-            if (mywaitpid(pid, &status, WNOHANG) == pid) {
-                update_pcb(pcb, status);
-            }
+            waitpid_update_pcb(pcb, WNOHANG);
         } else {
             // else wait for the child process to exit
-            // Use waitpid() with WNOHANG when not blocking during wait and  waitpid() with WUNTRACED when parent needs to block due to wait
-            if (mywaitpid(pid, &status, WUNTRACED) == pid) {
-                update_pcb(pcb, status);
-            }
+            g_fgProcess = pid;
+            waitpid_update_pcb(pcb,  WUNTRACED);
+            g_fgProcess = -1;
         }
     }
 }
@@ -415,6 +420,7 @@ void my_process_command(size_t num_tokens, char **tokens) {
 
 void my_quit(void) {
     // Kill every process in the PCB that is either stopped or running
+    proc_update_status();
     for (uint i = 0; i < g_PCBListIndex; i++) {
         if (g_PCBList[i]->status == RUNNING || g_PCBList[i]->status == STOPPED) {
             printf("Killing [%d]\n", g_PCBList[i]->pid);
