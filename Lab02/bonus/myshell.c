@@ -128,10 +128,10 @@ static void proc_update_status() {
 static void signal_handler(int signo) {
     // Use the signo to identy ctrl-Z or ctrl-C and print “[PID] stopped or print “[PID] interrupted accordingly.
     // Update the status of the process in the PCB table
-    proc_update_status();
     if (g_fgProcess == -1) {
         return;
     }
+    proc_update_status();
 
     if (signo == SIGINT) {
         PCBTable *pcb = find_pcb(g_fgProcess);
@@ -244,6 +244,8 @@ static void command_fg(Command *cmd) {
     PCBTable *pcb = find_pcb(pid);
     if (pcb != NULL && pcb->status == STOPPED) {
         printf("[%d] resumed\n", pid);
+        g_fgProcess = pid;
+        pcb->status = RUNNING;
         kill(pid, SIGCONT);
         waitpid_update_pcb(pcb,  WUNTRACED);
     }
