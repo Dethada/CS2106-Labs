@@ -153,7 +153,7 @@ static void command_info(Command *cmd) {
                 printf("[%d] %s\n", g_PCBList[i]->pid, statusCaps[g_PCBList[i]->status-1]);
             }
         }
-    } else if (option >= 1 && option <= 4) {
+    } else if (option >= 1 && option <= 3) {
         uint count = 0;
         for (uint i = 0; i < g_PCBListIndex; i++) {
             if (g_PCBList[i]->status == (int) option) {
@@ -366,9 +366,9 @@ void my_quit(void) {
     // Kill every process in the PCB that is either stopped or running
     proc_update_status();
     for (uint i = 0; i < g_PCBListIndex; i++) {
-        if (g_PCBList[i]->status == RUNNING || g_PCBList[i]->status == STOPPED) {
+        if (g_PCBList[i]->status == RUNNING) {
             printf("Killing [%d]\n", g_PCBList[i]->pid);
-            kill(g_PCBList[i]->pid, SIGKILL);
+            kill(g_PCBList[i]->pid, SIGTERM);
         }
         free(g_PCBList[i]);
     }

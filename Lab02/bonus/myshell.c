@@ -426,7 +426,7 @@ void my_quit(void) {
     for (uint i = 0; i < g_PCBListIndex; i++) {
         if (g_PCBList[i]->status == RUNNING || g_PCBList[i]->status == STOPPED) {
             printf("Killing [%d]\n", g_PCBList[i]->pid);
-            kill(g_PCBList[i]->pid, SIGKILL);
+            kill(g_PCBList[i]->pid, SIGTERM);
         }
         free(g_PCBList[i]);
     }
