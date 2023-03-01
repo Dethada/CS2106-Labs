@@ -247,7 +247,7 @@ static void command_exec(Command *cmd) {
         execv(cmd->command, cmd->argv-1);
 
         // The exec() functions only return if an error has occurred. The return value is -1, and errno is set to indicate the error.
-        fprintf(stderr, "%s failed to executed.\n", cmd->command);
+        fprintf(stderr, "%s failed to execute.\n", cmd->command);
         exit(EXIT_FAILURE);
     } else {
         // PARENT PROCESS
