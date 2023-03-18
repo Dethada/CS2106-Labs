@@ -35,9 +35,9 @@ void packer_destroy(void) {
     for (int i = 0; i < 3; i++) {
         sem_destroy(&mutex_b[i]);
         struct ball *toDelete;
-        while (!TAILQ_EMPTY(&heads[colour])) {
-            toDelete = TAILQ_FIRST(&heads[colour]);
-            TAILQ_REMOVE(&heads[colour], toDelete, entries);
+        while (!TAILQ_EMPTY(&heads[i])) {
+            toDelete = TAILQ_FIRST(&heads[i]);
+            TAILQ_REMOVE(&heads[i], toDelete, entries);
             free(toDelete);
         }
     }
