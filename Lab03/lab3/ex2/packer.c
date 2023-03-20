@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <sys/queue.h>
 #include <stddef.h>
 
 // You can declare global variables here
@@ -10,7 +11,7 @@
 struct ball {
     int id; // id of the ball
     int flag; // flag to check which balls got selected, 0 = not selected, 1 = selected, N = allocated finish (destroy)
-    TAILQ_ENTRY(ball) entries;
+    TAILQ_ENTRY(ball) entries; 
 };
 
 int N = -1;
@@ -106,7 +107,7 @@ void pack_ball(int colour, int id, int *other_ids) {
                 if (count_N[colour] == N) {
                     count_N[colour] = 0;
                     for (int i = 0; i < N; i++) {
-                        sem_post(&mutex_full[colour]); // after N balls finish packing, let the next N in
+                        sem_post(&mutex_full[colour]); // posts N times again to allow the blocked selected balls to pass
                     }
                 }
                 break;
