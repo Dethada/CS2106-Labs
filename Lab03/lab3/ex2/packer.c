@@ -60,7 +60,9 @@ void pack_ball(int colour, int id, int *other_ids) {
     area->index++;
 
     if (area->index == N) { // if N balls are here, pack them
-        sem_post(&ready[colour]);
+        for (int i = 0; i < N; i++) {
+            sem_post(&ready[colour]);
+        }
     }
 
     sem_post(&mutex[colour]);
@@ -86,8 +88,6 @@ void pack_ball(int colour, int id, int *other_ids) {
         for (int i = 0; i < N; i++) {
             sem_post(&sem[colour]);
         }
-    } else {
-        sem_post(&ready[colour]); // continue allowing balls to pass
     }
 
     sem_post(&mutex[colour]);
