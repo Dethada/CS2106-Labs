@@ -1,6 +1,5 @@
 #include "packer.h"
 #include <semaphore.h>
-#include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -60,8 +59,7 @@ void pack_ball(int colour, int id, int *other_ids) {
     area->balls[area->index] = id;
     area->index++;
 
-    int count = area->index;
-    if (count == N) { // if N balls are here, pack them
+    if (area->index == N) { // if N balls are here, pack them
         sem_post(&ready[colour]);
     }
 
