@@ -19,8 +19,9 @@ TAILQ_HEAD(tailhead, ball);
 sem_t mutex;
 sem_t mutex_b[3]; // ensure N number of balls reach per colour
 sem_t mutex_flags[3]; // ensures that after N balls pass, N balls set their own flag to 1, to determine which balls are selected
+sem_t mutex_full[3];
 struct tailhead heads[3];
-int count_N = 0;
+int count_N[3] = {0};
 
 void packer_init(int balls_per_pack) {
     N = balls_per_pack;
@@ -33,6 +34,7 @@ void packer_init(int balls_per_pack) {
         TAILQ_INSERT_HEAD(&heads[i], count, entries);
         sem_init(&mutex_flags[i], 1, 0);
         sem_init(&mutex_b[i], 1, 0);
+        sem_init(&mutex_full[i], 1, N);
     }
 }
 
@@ -41,6 +43,7 @@ void packer_destroy(void) {
     for (int i = 0; i < 3; i++) {
         sem_destroy(&mutex_b[i]);
         sem_destroy(&mutex_flags[i]);
+        sem_destroy(&mutex_full[i]);
         struct ball *to_delete;
         while (!TAILQ_EMPTY(&heads[i])) {
             to_delete = TAILQ_FIRST(&heads[i]);
@@ -72,6 +75,7 @@ void pack_ball(int colour, int id, int *other_ids) {
 
     sem_wait(&mutex_b[colour]); // block if there are not N balls yet
 
+    sem_wait(&mutex_full[colour]);
 
     sem_wait(&mutex);
         TAILQ_FOREACH(np, &heads[colour], entries) {
@@ -80,9 +84,9 @@ void pack_ball(int colour, int id, int *other_ids) {
                 break;
             }
         }
-        count_N++; // within mutex to ensure that N balls have set their own flags to 1
-        if (count_N == N) {
-            count_N = 0;
+        count_N[colour]++; // within mutex to ensure that N balls have set their own flags to 1
+        if (count_N[colour] == N) {
+            count_N[colour] = 0;
             for (int i = 0; i < N; i++) {
                 sem_post(&mutex_flags[colour]); // posts N times again to allow the blocked selected balls to pass
             }
@@ -99,6 +103,13 @@ void pack_ball(int colour, int id, int *other_ids) {
         while (np != NULL) {   
             np_temp = TAILQ_NEXT(np, entries);
             if (matches == N - 1) { // if matched with N - 1 balls, break 
+                count_N[colour]++;
+                if (count_N[colour] == N) {
+                    count_N[colour] = 0;
+                    for (int i = 0; i < N; i++) {
+                        sem_post(&mutex_full[colour]);
+                    }
+                }
                 break;
             }
 
