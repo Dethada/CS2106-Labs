@@ -3,16 +3,16 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <sys/queue.h>
 #include <stddef.h>
 
 // You can declare global variables here
+#define NUM_COLORS 3
 
-struct ball {
-    int id; // id of the ball
-    int flag; // flag to check which balls got selected, 0 = not selected, 1 = selected, N = allocated finish (destroy)
-    TAILQ_ENTRY(ball) entries; 
-};
+typedef struct PackingArea {
+    int index; // index of the next available slot in the packing area
+    int packed; // number of balls packed in the box
+    int *balls; // ids of the balls in the packing area
+} PackingArea;
 
 int N = -1;
 TAILQ_HEAD(tailhead, ball);
@@ -75,7 +75,7 @@ void pack_ball(int colour, int id, int *other_ids) {
 
     sem_wait(&mutex_b[colour]); // block if there are not N balls yet
 
-    sem_wait(&mutex_full[colour]);
+    sem_wait(&mutex_full[colour]); // waits for N balls to finish packing
 
     sem_wait(&mutex);
         TAILQ_FOREACH(np, &heads[colour], entries) {
@@ -107,7 +107,7 @@ void pack_ball(int colour, int id, int *other_ids) {
                 if (count_N[colour] == N) {
                     count_N[colour] = 0;
                     for (int i = 0; i < N; i++) {
-                        sem_post(&mutex_full[colour]);
+                        sem_post(&mutex_full[colour]); // after N balls finish packing, let the next N in
                     }
                 }
                 break;
