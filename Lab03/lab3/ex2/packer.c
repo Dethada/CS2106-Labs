@@ -6,13 +6,12 @@
 #include <stddef.h>
 
 // You can declare global variables here
-#define NUM_COLORS 3
 
-typedef struct PackingArea {
-    int index; // index of the next available slot in the packing area
-    int packed; // number of balls packed in the box
-    int *balls; // ids of the balls in the packing area
-} PackingArea;
+struct ball {
+    int id; // id of the ball
+    int flag; // flag to check which balls got selected, 0 = not selected, 1 = selected, N = allocated finish (destroy)
+    TAILQ_ENTRY(ball) entries;
+};
 
 int N = -1;
 TAILQ_HEAD(tailhead, ball);
