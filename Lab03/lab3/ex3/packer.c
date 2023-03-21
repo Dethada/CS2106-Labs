@@ -83,14 +83,6 @@ int pack_ball(int colour, int id) {
     // sem_init(&(new_ball->pack), 0, 0);
     sem_init(&new_ball->pack, 0, 0);
 
-    sem_wait(&color_mutex[colour]);
-    // add ball to its color queue
-    sem_wait(&mutex);
-    STAILQ_INSERT_TAIL(&heads[colour], new_ball, entries);
-    color_count[colour]++;
-    // print_queue(colour);
-    // sem_post(&mutex);
-
     int pair_color = 0;
 
     switch (colour) {
@@ -107,6 +99,14 @@ int pack_ball(int colour, int id) {
             pair_color = BLUE;
             break;
     }
+
+    sem_wait(&color_mutex[colour]);
+    // add ball to its color queue
+    sem_wait(&mutex);
+    STAILQ_INSERT_TAIL(&heads[colour], new_ball, entries);
+    color_count[colour]++;
+    // print_queue(colour);
+    // sem_post(&mutex);
 
     // sem_wait(&color_mutex[colour]);
 
