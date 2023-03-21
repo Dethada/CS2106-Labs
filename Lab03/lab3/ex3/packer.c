@@ -52,6 +52,7 @@ void packer_init(void) {
 }
 
 void packer_destroy(void) {
+    sem_destroy(&mutex);
     for (int i = 0; i < NUM_COLORS; i++) {
         sem_destroy(&color_mutex[i]);
         Ball *to_delete;
@@ -82,12 +83,13 @@ int pack_ball(int colour, int id) {
     // sem_init(&(new_ball->pack), 0, 0);
     sem_init(&new_ball->pack, 0, 0);
 
+    sem_wait(&color_mutex[colour]);
     // add ball to its color queue
     sem_wait(&mutex);
     STAILQ_INSERT_TAIL(&heads[colour], new_ball, entries);
     color_count[colour]++;
     // print_queue(colour);
-    sem_post(&mutex);
+    // sem_post(&mutex);
 
     int pair_color = 0;
 
@@ -106,9 +108,10 @@ int pack_ball(int colour, int id) {
             break;
     }
 
-    sem_wait(&color_mutex[colour]);
+    // sem_wait(&color_mutex[colour]);
 
-    sem_wait(&mutex);
+    // sem_wait(&mutex);
+    // color_count[colour]++;
     // printf("Ball: %d Red: %d, Green: %d, Blue: %d, Black: %d\n",
     //        id, color_count[RED], color_count[GREEN], color_count[BLUE], color_count[BLACK]);
     if (color_count[pair_color] >= 1) {
@@ -142,9 +145,13 @@ int pack_ball(int colour, int id) {
 
     // removed the paired ball from queue
     STAILQ_REMOVE_HEAD(&heads[pair_color], entries); // Remove it from the queue
-    // sem_destroy(&paired_ball->pack);
-    // free(paired_ball);
     color_count[pair_color]--;
+
+    // first ball to enter will do cleanup after second ball matches
+    sem_destroy(&paired_ball->pack);
+    sem_destroy(&new_ball->pack);
+    free(new_ball);
+    free(paired_ball);
 
     sem_post(&mutex);
 
