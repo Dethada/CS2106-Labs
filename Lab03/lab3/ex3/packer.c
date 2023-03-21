@@ -78,8 +78,8 @@ void print_queue(int colour) {
 }
 
 int find_pair(int pair_color) {
-    sem_wait(&color_mutex[pair_color]);
-    // sem_wait(&mutex);
+    // sem_wait(&color_mutex[pair_color]);
+    sem_wait(&mutex);
     Ball *tmp_ball = STAILQ_FIRST(&heads[pair_color]);
     int matched = tmp_ball->id;
 
@@ -92,8 +92,8 @@ int find_pair(int pair_color) {
     free(tmp_ball);
     color_count[pair_color]--;
 
-    sem_post(&color_mutex[pair_color]);
-    // sem_post(&mutex);
+    // sem_post(&color_mutex[pair_color]);
+    sem_post(&mutex);
 
     return matched;
 }
@@ -132,54 +132,52 @@ int pack_ball(int colour, int id) {
             break;
     }
 
-    sem_wait(&color_mutex[colour]);
-    sem_wait(&color_mutex[pair_color]);
-    // sem_wait(&mutex);
-    printf("Ball: %d Red: %d, Green: %d, Blue: %d, Black: %d\n",
-           id, color_count[RED], color_count[GREEN], color_count[BLUE], color_count[BLACK]);
+    sem_wait(&mutex);
+    // printf("Ball: %d Red: %d, Green: %d, Blue: %d, Black: %d\n",
+    //        id, color_count[RED], color_count[GREEN], color_count[BLUE], color_count[BLACK]);
     if (color_count[pair_color] >= 1) {
         // wake the paired ball
-        // Ball *tmp_ball = STAILQ_FIRST(&heads[pair_color]);
-        // int matched = tmp_ball->id;
-        //
+        Ball *tmp_ball = STAILQ_FIRST(&heads[pair_color]);
         // STAILQ_REMOVE_HEAD(&heads[pair_color], entries);
-        // sem_post(&tmp_ball->pack);
-        // // tmp_ball = STAILQ_FIRST(&heads[colour]);
-        // // sem_post(&tmp_ball->pack);
-        // // color_count[colour]--;
+        sem_post(&tmp_ball->pack);
+        tmp_ball = STAILQ_FIRST(&heads[colour]);
+        sem_post(&tmp_ball->pack);
+        // color_count[colour]--;
         // sem_destroy(&tmp_ball->pack);
         // free(tmp_ball);
         // color_count[pair_color]--;
         //
         // printf("Early pack: %d\n", id);
-        return find_pair(pair_color);
+        // return find_pair(pair_color);
     }
-    sem_post(&color_mutex[colour]);
-    sem_post(&color_mutex[pair_color]);
-    // sem_post(&mutex);
+    sem_post(&mutex);
 
     // wait matching color ball to arrive
     sem_wait(&new_ball->pack);
-    printf("Wait pack: %d\n", id);
+    // printf("reached\n");
+    // printf("Wait pack: %d\n", id);
 
     // printf("Packed ball %d of\n", new_ball->id);
 
     // find pair
     // sem_wait(&color_mutex[pair_color]);
-    // sem_wait(&mutex);
+    sem_wait(&mutex);
 
-    // Ball *paired_ball = STAILQ_FIRST(&heads[pair_color]); // Get a pointer to the first item
-    // int matched = paired_ball->id;
-    // // printf("Id: %d, Matched: %d\n", id, matched);
-    //
-    // // clean up
-    // STAILQ_REMOVE_HEAD(&heads[pair_color], entries); // Remove it from the queue
-    // sem_destroy(&paired_ball->pack);
-    // free(paired_ball);
-    // color_count[pair_color]--;
-    //
-    // // sem_post(&color_mutex[pair_color]);
-    // sem_post(&mutex);
+    Ball *paired_ball = STAILQ_FIRST(&heads[pair_color]); // Get a pointer to the first item
+    int matched = paired_ball->id;
+    // printf("Id: %d, Matched: %d\n", id, matched);
 
-    return find_pair(pair_color);
+    // clean up
+    STAILQ_REMOVE_HEAD(&heads[pair_color], entries); // Remove it from the queue
+    sem_destroy(&paired_ball->pack);
+    free(paired_ball);
+    color_count[pair_color]--;
+
+    // sem_post(&color_mutex[pair_color]);
+    sem_post(&mutex);
+
+    // return find_pair(pair_color);
+    /*
+    */
+    return matched;
 }
