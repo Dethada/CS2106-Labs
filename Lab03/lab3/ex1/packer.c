@@ -9,7 +9,7 @@
 
 struct ball {
     int id;
-    TAILQ_ENTRY(ball) entries; 
+    TAILQ_ENTRY(ball) entries;
 };
 
 TAILQ_HEAD(tailhead, ball);
@@ -59,7 +59,7 @@ int pack_ball(int colour, int id) {
     }
 
     sem_post(&mutex);
-    
+
     if (count % 2 != 0) {
         sem_wait(&mutex_b[colour]);
     }
