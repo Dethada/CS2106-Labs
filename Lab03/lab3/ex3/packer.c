@@ -8,23 +8,12 @@
 
 // You can declare global variables here
 #define NUM_COLORS 4
-#define TYPE_PAIRS 2
-
-#define RG_PAIR 0
-#define BB_PAIR 1
 
 #define RED 0
 #define GREEN 1
 #define BLUE 2
 #define BLACK 3
 
-// typedef struct PackingArea {
-//     int count;
-//     int packed; // number of balls packed in the box
-//     int balls[2]; // ids of the balls in the packing area
-// } PackingArea;
-
-// Define a sample data structure for the list items
 typedef struct Ball {
     int id;
     sem_t pack;
@@ -65,22 +54,11 @@ void packer_destroy(void) {
     }
 }
 
-void print_queue(int colour) {
-    Ball *tmp_ball;
-    printf("Color %d Queue: ", colour);
-    STAILQ_FOREACH(tmp_ball, &heads[colour], entries) {
-        printf("%d, ", tmp_ball->id);
-    }
-    printf("\n");
-}
-
 int pack_ball(int colour, int id) {
     colour--; // make color 0 indexed
 
     Ball *new_ball = malloc(sizeof(Ball));
     new_ball->id = id;
-    // printf("New ball %d of color %d\n", new_ball->id, colour);
-    // sem_init(&(new_ball->pack), 0, 0);
     sem_init(&new_ball->pack, 0, 0);
 
     int pair_color = 0;
@@ -105,15 +83,7 @@ int pack_ball(int colour, int id) {
     sem_wait(&mutex);
     STAILQ_INSERT_TAIL(&heads[colour], new_ball, entries);
     color_count[colour]++;
-    // print_queue(colour);
-    // sem_post(&mutex);
 
-    // sem_wait(&color_mutex[colour]);
-
-    // sem_wait(&mutex);
-    // color_count[colour]++;
-    // printf("Ball: %d Red: %d, Green: %d, Blue: %d, Black: %d\n",
-    //        id, color_count[RED], color_count[GREEN], color_count[BLUE], color_count[BLACK]);
     if (color_count[pair_color] >= 1) {
         // wake the paired ball
         Ball *tmp_ball = STAILQ_FIRST(&heads[pair_color]);
@@ -122,8 +92,6 @@ int pack_ball(int colour, int id) {
 
         // removed the paired ball from queue
         STAILQ_REMOVE_HEAD(&heads[pair_color], entries);
-        // sem_destroy(&tmp_ball->pack);
-        // free(tmp_ball);
         color_count[pair_color]--;
 
         // unlock mutexes before returning
@@ -133,8 +101,6 @@ int pack_ball(int colour, int id) {
     }
     sem_post(&mutex);
 
-    // wait matching color ball to arrive
-    // sem_wait(&(new_ball->pack));
     sem_wait(&new_ball->pack);
 
     // find pair
