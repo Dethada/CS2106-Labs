@@ -11,9 +11,6 @@
 
 // The zc_file struct is analogous to the FILE struct that you get from fopen.
 struct zc_file {
-    // Insert the fields you need here.
-
-
     /* Some suggested fields :
         - pointer to the virtual memory space
         - offset from the start of the virtual memory
@@ -22,7 +19,7 @@ struct zc_file {
         - mutex for access to the memory space and number of readers
     */
     char *addr;
-    off_t offset;
+    size_t offset;
     size_t size;
     int fd;
     // pthread_mutex_t mutex;
@@ -115,15 +112,31 @@ void zc_read_end(zc_file* file) {
     // To implement
 }
 
+static int zc_resize(zc_file* file, size_t size) {
+    if (ftruncate(file->fd, size) == -1) {
+        perror("ftruncate");
+        return -1;
+    }
+    file->addr = mremap(file->addr, file->size, size, MREMAP_MAYMOVE);
+    file->size = size;
+    return 0;
+}
+
 char* zc_write_start(zc_file* file, size_t size) {
-    // handle over writing
-    if (file->offset + size > file->size) {
-        if (ftruncate(file->fd, file->offset + size) == -1) {
-            perror("ftruncate");
+    // check if offset is greater than file size
+    if (file->offset > file->size) {
+        size_t old_size = file->size;
+        if (zc_resize(file, file->offset) == -1) {
             return NULL;
         }
-        file->addr = mremap(file->addr, file->size, file->offset + size, MREMAP_MAYMOVE);
-        file->size = file->offset + size;
+        memset(file->addr + old_size, 0, file->offset - old_size);
+    }
+
+    // handle over writing
+    if (file->offset + size > file->size) {
+        if (zc_resize(file, file->offset + size) == -1) {
+            return NULL;
+        }
     }
     // printf("DEBUG: file size: %zu, file offset: %lld, size: %zu\n", file->size, file->offset, size);
 
@@ -151,7 +164,7 @@ off_t zc_lseek(zc_file* file, long offset, int whence) {
             file->offset = offset;
             break;
         case SEEK_CUR:
-            if (file->offset + offset < 0) {
+            if ((long) file->offset + offset < 0) {
                 return -1;
             }
             file->offset += offset;
