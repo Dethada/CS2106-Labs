@@ -157,7 +157,7 @@ off_t zc_lseek(zc_file* file, long offset, int whence) {
             file->offset += offset;
             break;
         case SEEK_END:
-            if (file->size + offset < 0) {
+            if ((long) file->size + offset < 0) {
                 return -1;
             }
             file->offset = file->size + offset;
