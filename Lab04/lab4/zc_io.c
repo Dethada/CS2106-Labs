@@ -1,4 +1,5 @@
 #include <fcntl.h>
+#include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -172,8 +173,35 @@ off_t zc_lseek(zc_file* file, long offset, int whence) {
  **************/
 
 int zc_copyfile(const char* source, const char* dest) {
-    // To implement
-    return -1;
+    // read source file
+    zc_file *src_file = zc_open(source);
+    if (src_file == NULL) {
+        return -1;
+    }
+    size_t size = src_file->size;
+    const char *src_addr = zc_read_start(src_file, &size);
+    if (size != src_file->size) {
+        return -1;
+    }
+    zc_read_end(src_file);
+
+    // write to dest file
+    zc_file *dest_file = zc_open(dest);
+    if (dest_file == NULL) {
+        return -1;
+    }
+    char *dest_addr = zc_write_start(dest_file, size);
+    if (dest_addr == NULL) {
+        return -1;
+    }
+    memcpy(dest_addr, src_addr, size);
+    zc_write_end(dest_file);
+
+    // close files
+    zc_close(src_file);
+    zc_close(dest_file);
+
+    return 0;
 }
 
 /**************
