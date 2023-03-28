@@ -50,7 +50,7 @@ zc_file* zc_open(const char* path) {
 
     // Map the file to memory
     size_t map_size = (finfo.st_size == 0) ? 1 : finfo.st_size;
-    char *addr = mmap(NULL, map_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    char *addr = mmap(NULL, map_size, PROT_READ | PROT_WRITE, MAP_SHARED_VALIDATE, fd, 0);
     if (addr == MAP_FAILED) {
         perror("mmap");
         return NULL;
@@ -124,7 +124,7 @@ char* zc_write_start(zc_file* file, size_t size) {
         file->addr = mremap(file->addr, file->size, file->offset + size, MREMAP_MAYMOVE);
         file->size = file->offset + size;
     }
-    printf("DEBUG: file size: %zu, file offset: %lld, size: %zu\n", file->size, file->offset, size);
+    // printf("DEBUG: file size: %zu, file offset: %lld, size: %zu\n", file->size, file->offset, size);
 
     char *addr = file->addr + file->offset;
     file->offset += size;
