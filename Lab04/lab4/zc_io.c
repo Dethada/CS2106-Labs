@@ -49,7 +49,7 @@ zc_file* zc_open(const char* path) {
     // printf("DEBUG: file size: %zu\n", finfo.st_size);
 
     // Map the file to memory
-    size_t map_size = (finfo.st_size == 0) ? 1 : finfo.st_size;
+    size_t map_size = (finfo.st_size == 0) ? 1 : finfo.st_size; // mmap() doesn't allow mapping 0 bytes
     char *addr = mmap(NULL, map_size, PROT_READ | PROT_WRITE, MAP_SHARED_VALIDATE, fd, 0);
     if (addr == MAP_FAILED) {
         perror("mmap");
@@ -142,8 +142,29 @@ void zc_write_end(zc_file* file) {
  **************/
 
 off_t zc_lseek(zc_file* file, long offset, int whence) {
-    // To implement
-    return -1;
+    switch(whence) {
+        case SEEK_SET:
+            if (offset < 0) {
+                return -1;
+            }
+            file->offset = offset;
+            break;
+        case SEEK_CUR:
+            if (file->offset + offset < 0) {
+                return -1;
+            }
+            file->offset += offset;
+            break;
+        case SEEK_END:
+            if (file->size + offset < 0) {
+                return -1;
+            }
+            file->offset = file->size + offset;
+            break;
+        default:
+            return -1;
+    }
+    return file->offset;
 }
 
 /**************
