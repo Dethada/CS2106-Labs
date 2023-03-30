@@ -191,9 +191,9 @@ int zc_copyfile(const char* source, const char* dest) {
     if (src_file == NULL) {
         return -1;
     }
-    size_t size = src_file->size;
-    const char *src_addr = zc_read_start(src_file, &size);
-    if (size != src_file->size) {
+    size_t src_size = src_file->size;
+    const char *src_addr = zc_read_start(src_file, &src_size);
+    if (src_size != src_file->size) {
         return -1;
     }
     zc_read_end(src_file);
@@ -203,12 +203,20 @@ int zc_copyfile(const char* source, const char* dest) {
     if (dest_file == NULL) {
         return -1;
     }
-    char *dest_addr = zc_write_start(dest_file, size);
+    char *dest_addr = zc_write_start(dest_file, src_size);
     if (dest_addr == NULL) {
         return -1;
     }
-    memcpy(dest_addr, src_addr, size);
+    memcpy(dest_addr, src_addr, src_size);
     zc_write_end(dest_file);
+
+    // truncate file if needed
+    if (dest_file->size > src_size) {
+        if (ftruncate(dest_file->fd, src_size) == -1) {
+            perror("ftruncate");
+            return -1;
+        }
+    }
 
     // close files
     zc_close(src_file);
