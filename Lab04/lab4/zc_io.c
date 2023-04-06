@@ -22,7 +22,9 @@ struct zc_file {
     size_t offset;
     size_t size;
     int fd;
-    // pthread_mutex_t mutex;
+    pthread_mutex_t mutex;
+    pthread_mutex_t mutex_empty;
+    int nReaders;
 };
 
 /**************
@@ -65,7 +67,9 @@ zc_file* zc_open(const char* path) {
     file->offset = 0;
     file->size = finfo.st_size;
     file->fd = fd;
-    // pthread_mutex_init(&file->mutex, NULL);
+    file->nReaders = 0;
+    pthread_mutex_init(&file->mutex, NULL);
+    pthread_mutex_init(&file->mutex_empty, NULL);
 
     return file;
 }
@@ -88,6 +92,8 @@ int zc_close(zc_file* file) {
         perror("close");
         return -1;
     }
+    
+    pthread_mutex_destroy(&file->mutex);
 
     // Free the zc_file struct
     free(file);
@@ -96,6 +102,11 @@ int zc_close(zc_file* file) {
 }
 
 const char* zc_read_start(zc_file* file, size_t* size) {
+    pthread_mutex_lock(&file->mutex);
+    file->nReaders++;
+    if (file->nReaders == 1) {
+        pthread_mutex_lock(&file->mutex_empty);
+    }
     // prevent over reading
     if (file->offset + *size > file->size) {
         *size = file->size - file->offset;
@@ -104,12 +115,19 @@ const char* zc_read_start(zc_file* file, size_t* size) {
 
     char *addr = file->addr + file->offset;
     file->offset += *size;
+    pthread_mutex_unlock(&file->mutex);
 
     return addr;
 }
 
 void zc_read_end(zc_file* file) {
     // To implement
+    pthread_mutex_lock(&file->mutex);
+    file->nReaders--;
+    if (file->nReaders == 0) {
+        pthread_mutex_unlock(&file->mutex_empty);
+    }
+    pthread_mutex_unlock(&file->mutex);
 }
 
 static int zc_resize(zc_file* file, size_t size) {
@@ -123,6 +141,8 @@ static int zc_resize(zc_file* file, size_t size) {
 }
 
 char* zc_write_start(zc_file* file, size_t size) {
+    pthread_mutex_lock(&file->mutex_empty);
+
     // check if offset is greater than file size
     if (file->offset > file->size) {
         size_t old_size = file->size;
@@ -143,12 +163,14 @@ char* zc_write_start(zc_file* file, size_t size) {
     char *addr = file->addr + file->offset;
     file->offset += size;
 
+
     return addr;
 
 }
 
 void zc_write_end(zc_file* file) {
     msync(file->addr, file->size, MS_SYNC);
+    pthread_mutex_unlock(&file->mutex_empty);
 }
 
 /**************
@@ -156,6 +178,7 @@ void zc_write_end(zc_file* file) {
  **************/
 
 off_t zc_lseek(zc_file* file, long offset, int whence) {
+    pthread_mutex_lock(&file->mutex_empty);
     switch(whence) {
         case SEEK_SET:
             if (offset < 0) {
@@ -178,6 +201,7 @@ off_t zc_lseek(zc_file* file, long offset, int whence) {
         default:
             return -1;
     }
+    pthread_mutex_unlock(&file->mutex_empty);
     return file->offset;
 }
 
