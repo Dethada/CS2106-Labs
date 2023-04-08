@@ -6,6 +6,7 @@
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <pthread.h>
 
 #include "zc_io.h"
 
@@ -92,7 +93,7 @@ int zc_close(zc_file* file) {
         perror("close");
         return -1;
     }
-    
+
     pthread_mutex_destroy(&file->mutex);
 
     // Free the zc_file struct
