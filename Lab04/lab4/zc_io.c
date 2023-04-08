@@ -50,8 +50,8 @@ zc_file* zc_open(const char* path) {
     // printf("DEBUG: file size: %zu\n", finfo.st_size);
 
     // Map the file to memory
-    size_t map_size = (finfo.st_size == 0) ? 1 : finfo.st_size; // mmap() doesn't allow mapping 0 bytes
-    char *addr = mmap(NULL, map_size, PROT_READ | PROT_WRITE, MAP_SHARED_VALIDATE, fd, 0);
+    // size_t map_size = (finfo.st_size == 0) ? 1 : finfo.st_size; // mmap() doesn't allow mapping 0 bytes
+    char *addr = (finfo.st_size == 0) ? NULL : mmap(NULL, finfo.st_size, PROT_READ | PROT_WRITE, MAP_SHARED_VALIDATE, fd, 0);
     if (addr == MAP_FAILED) {
         perror("mmap");
         return NULL;
@@ -143,6 +143,21 @@ static int zc_resize(zc_file* file, size_t size) {
 
 char* zc_write_start(zc_file* file, size_t size) {
     pthread_mutex_lock(&file->mutex_empty);
+
+    // if file address is NULL, then file is empty
+    // change filesize on disk, then mmap to virtual memory
+    if (file->addr == NULL) {
+        if (ftruncate(file->fd, size) == -1) {
+            perror("ftruncate");
+            return NULL;
+        }
+        file->addr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED_VALIDATE, file->fd, 0);
+        if (file->addr == MAP_FAILED) {
+            perror("mmap");
+            return NULL;
+        }
+        file->size = size;
+    }
 
     // check if offset is greater than file size
     if (file->offset > file->size) {
