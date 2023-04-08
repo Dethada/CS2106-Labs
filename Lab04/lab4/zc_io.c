@@ -12,13 +12,6 @@
 
 // The zc_file struct is analogous to the FILE struct that you get from fopen.
 struct zc_file {
-    /* Some suggested fields :
-        - pointer to the virtual memory space
-        - offset from the start of the virtual memory
-        - total size of the file
-        - file descriptor to the opened file
-        - mutex for access to the memory space and number of readers
-    */
     char *addr;
     size_t offset;
     size_t size;
@@ -34,7 +27,6 @@ struct zc_file {
 
 zc_file* zc_open(const char* path) {
     // Open the file
-    // printf("DEBUG: path: %s\n", path);
     int fd = open(path, O_CREAT | O_RDWR, 0644);
     if (fd == -1) {
         perror("open");
@@ -47,16 +39,13 @@ zc_file* zc_open(const char* path) {
         perror("fstat");
         return NULL;
     }
-    // printf("DEBUG: file size: %zu\n", finfo.st_size);
 
     // Map the file to memory
-    // size_t map_size = (finfo.st_size == 0) ? 1 : finfo.st_size; // mmap() doesn't allow mapping 0 bytes
     char *addr = (finfo.st_size == 0) ? NULL : mmap(NULL, finfo.st_size, PROT_READ | PROT_WRITE, MAP_SHARED_VALIDATE, fd, 0);
     if (addr == MAP_FAILED) {
         perror("mmap");
         return NULL;
     }
-    // printf("DEBUG: addr: %p\n", addr);
 
     // Allocate a zc_file struct
     zc_file *file = malloc(sizeof(zc_file));
@@ -112,7 +101,6 @@ const char* zc_read_start(zc_file* file, size_t* size) {
     if (file->offset + *size > file->size) {
         *size = file->size - file->offset;
     }
-    // printf("DEBUG: file size: %zu, file offset: %lld, size: %zu\n", file->size, file->offset, *size);
 
     char *addr = file->addr + file->offset;
     file->offset += *size;
@@ -122,7 +110,6 @@ const char* zc_read_start(zc_file* file, size_t* size) {
 }
 
 void zc_read_end(zc_file* file) {
-    // To implement
     pthread_mutex_lock(&file->mutex);
     file->nReaders--;
     if (file->nReaders == 0) {
@@ -174,7 +161,6 @@ char* zc_write_start(zc_file* file, size_t size) {
             return NULL;
         }
     }
-    // printf("DEBUG: file size: %zu, file offset: %lld, size: %zu\n", file->size, file->offset, size);
 
     char *addr = file->addr + file->offset;
     file->offset += size;
